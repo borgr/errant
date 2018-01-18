@@ -5,19 +5,16 @@ from nltk.stem.lancaster import LancasterStemmer
 import scripts.align_text as align_text
 import scripts.cat_rules as cat_rules
 import scripts.toolbox as toolbox
+import six
+
+resources = {}
 
 def main(args):
-	# Get base working directory.
-	basename = os.path.dirname(os.path.realpath(__file__))
-	print("Loading resources...")
-	# Load Tokenizer and other resources
-	nlp = spacy.load("en")
-	# Lancaster Stemmer
-	stemmer = LancasterStemmer()
-	# GB English word list (inc -ise and -ize)
-	gb_spell = toolbox.loadDictionary(basename+"/resources/en_GB-large.txt")
-	# Part of speech map file
-	tag_map = toolbox.loadTagMap(basename+"/resources/en-ptb_map")	
+	resources = init_resources()
+	nlp = resources["nlp"]
+	stemmer = resources["stemmer"]
+	gb_spell = resources["gb_spell"]
+	tag_map = resources["tag_map"]
 	# Setup output m2 file
 	out_m2 = open(args.out, "w")
 
@@ -47,6 +44,59 @@ def main(args):
 					out_m2.write(toolbox.formatEdit(auto_edit)+"\n")
 			# Write a newline when there are no more edits.
 			out_m2.write("\n")
+	out_m2.close()
+
+def init_resources():
+	if resources is {}:
+		# Get base working directory.
+		basename = os.path.dirname(os.path.realpath(__file__))
+		print("Loading resources...")
+		# Load Tokenizer and other resources
+		resources["nlp"] = spacy.load("en")
+		# Lancaster Stemmer
+		resources["stemmer"] = LancasterStemmer()
+		# GB English word list (inc -ise and -ize)
+		resources["gb_spell"] = toolbox.loadDictionary(basename+"/resources/en_GB-large.txt")
+		# Part of speech map file
+		resources["tag_map"] = toolbox.loadTagMap(basename+"/resources/en-ptb_map")
+	return resources
+
+def parallel_to_m2(originals, references):
+	resources = init_resources()
+	nlp = resources["nlp"]
+	stemmer = resources["stemmer"]
+	gb_spell = resources["gb_spell"]
+	tag_map = resources["tag_map"]
+	out_m2 = []
+
+	print("Processing...")
+	# Change format if got a list of reference per original and not a list of lists of references
+	if isinstance(cor_sents[0], six.string_types):
+		cor_sents = [[cor_sent] for cor_sent in cor_sents]
+	# Process each pre-aligned sentence pair.
+	for orig_sent, cor_sents in zip(orig, cor):
+		# Write the original sentence to the output m2 file.
+		out_m2.append("S " + orig_sent)
+		for coder_id, cor_sent in enumerate(cor_sents):
+			# Identical sentences have no edits, so just write noop.
+			if orig_sent.strip() == cor_sent.strip():
+				out_m2.append("A -1 -1|||noop|||-NONE-|||REQUIRED|||-NONE-|||" + coder_id + "\n")
+			# Otherwise, do extra processing.
+			else:
+				# Markup the parallel sentences with spacy (assume tokenized)
+				proc_orig = toolbox.applySpacy(orig_sent.strip().split(), nlp)
+				proc_cor = toolbox.applySpacy(cor_sent.strip().split(), nlp)
+				# Auto align the parallel sentences and extract the edits.
+				auto_edits = align_text.getAutoAlignedEdits(proc_orig, proc_cor, nlp, args)
+				# Loop through the edits.
+				for auto_edit in auto_edits:
+					# Give each edit an automatic error type.
+					cat = cat_rules.autoTypeEdit(auto_edit, proc_orig, proc_cor, gb_spell, tag_map, nlp, stemmer)
+					auto_edit[2] = cat
+					# Write the edit to the output m2 file.
+					out_m2.append(toolbox.formatEdit(auto_edit, coder_id=coder_id)+"\n")
+			# Write a newline when there are no more edits.
+	return out_m2
 			
 if __name__ == "__main__":
 	# Define and parse program input
