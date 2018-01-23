@@ -1,6 +1,6 @@
 from itertools import groupby
 import spacy.parts_of_speech as POS
-import scripts.rdlextra as DL
+import errant.scripts.rdlextra as DL
 import string
 
 # Some global variables
@@ -267,7 +267,7 @@ def levSubstitution(a,b,c,d):
 # Input 4: Command line args.
 # Output: A list of lists. Each sublist is an edit of the form:
 # edit = [orig_start, orig_end, cat, cor, cor_start, cor_end]
-def getAutoAlignedEdits(orig, cor, spacy, args):
+def getAutoAlignedEdits(orig, cor, spacy, lev, merge):
 	# Save the spacy object globally.
 	global NLP
 	NLP = spacy
@@ -275,16 +275,16 @@ def getAutoAlignedEdits(orig, cor, spacy, args):
 	orig_toks = [tok.text for tok in orig]
 	cor_toks = [tok.text for tok in cor]
 	# Align using Levenshtein.
-	if args.lev: alignments = DL.WagnerFischer(orig_toks, cor_toks, orig, cor, substitution=levSubstitution, transposition=levTransposition)
+	if lev: alignments = DL.WagnerFischer(orig_toks, cor_toks, orig, cor, substitution=levSubstitution, transposition=levTransposition)
 	# Otherwise, use linguistically enhanced Damerau-Levenshtein
 	else: alignments = DL.WagnerFischer(orig_toks, cor_toks, orig, cor, substitution=token_substitution)
 	# Get the alignment with the highest score. There is usually only 1 best in DL due to custom costs.
 	alignment = next(alignments.alignments(True)) # True uses Depth-first search.
 	# Convert the alignment into edits; choose merge strategy
-	if args.merge == "rules": edits = get_edits(orig, cor, get_opcodes(alignment))
-	elif args.merge == "all-split": edits = get_edits_split(get_opcodes(alignment))
-	elif args.merge == "all-merge": edits = get_edits_group_all(get_opcodes(alignment))
-	elif args.merge == "all-equal": edits = get_edits_group_type(get_opcodes(alignment))
+	if merge == "rules": edits = get_edits(orig, cor, get_opcodes(alignment))
+	elif merge == "all-split": edits = get_edits_split(get_opcodes(alignment))
+	elif merge == "all-merge": edits = get_edits_group_all(get_opcodes(alignment))
+	elif merge == "all-equal": edits = get_edits_group_type(get_opcodes(alignment))
 	proc_edits = []
 	for edit in edits:
 		orig_start = edit[1]

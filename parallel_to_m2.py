@@ -1,10 +1,11 @@
 import argparse
 import os
+import sys
 import spacy
 from nltk.stem.lancaster import LancasterStemmer
-import scripts.align_text as align_text
-import scripts.cat_rules as cat_rules
-import scripts.toolbox as toolbox
+import errant.scripts.align_text as align_text
+import errant.scripts.cat_rules as cat_rules
+import errant.scripts.toolbox as toolbox
 import six
 
 resources = {}
@@ -34,7 +35,7 @@ def main(args):
 				proc_orig = toolbox.applySpacy(orig_sent.strip().split(), nlp)
 				proc_cor = toolbox.applySpacy(cor_sent.strip().split(), nlp)
 				# Auto align the parallel sentences and extract the edits.
-				auto_edits = align_text.getAutoAlignedEdits(proc_orig, proc_cor, nlp, args)
+				auto_edits = align_text.getAutoAlignedEdits(proc_orig, proc_cor, nlp, args.lev, args.merge)
 				# Loop through the edits.
 				for auto_edit in auto_edits:
 					# Give each edit an automatic error type.
@@ -47,10 +48,10 @@ def main(args):
 	out_m2.close()
 
 def init_resources():
-	if resources is {}:
+	if resources == {}:
 		# Get base working directory.
 		basename = os.path.dirname(os.path.realpath(__file__))
-		print("Loading resources...")
+		print("Loading errant resources...")
 		# Load Tokenizer and other resources
 		resources["nlp"] = spacy.load("en")
 		# Lancaster Stemmer
@@ -61,7 +62,7 @@ def init_resources():
 		resources["tag_map"] = toolbox.loadTagMap(basename+"/resources/en-ptb_map")
 	return resources
 
-def parallel_to_m2(originals, references):
+def parallel_to_m2(orig_sents, cor_sents, lev=False, merge="rules"):
 	resources = init_resources()
 	nlp = resources["nlp"]
 	stemmer = resources["stemmer"]
@@ -74,20 +75,20 @@ def parallel_to_m2(originals, references):
 	if isinstance(cor_sents[0], six.string_types):
 		cor_sents = [[cor_sent] for cor_sent in cor_sents]
 	# Process each pre-aligned sentence pair.
-	for orig_sent, cor_sents in zip(orig, cor):
+	for orig_sent, cor_sents in zip(orig_sents, cor_sents):
 		# Write the original sentence to the output m2 file.
 		out_m2.append("S " + orig_sent)
 		for coder_id, cor_sent in enumerate(cor_sents):
 			# Identical sentences have no edits, so just write noop.
 			if orig_sent.strip() == cor_sent.strip():
-				out_m2.append("A -1 -1|||noop|||-NONE-|||REQUIRED|||-NONE-|||" + coder_id + "\n")
+				out_m2.append("A -1 -1|||noop|||-NONE-|||REQUIRED|||-NONE-|||" + str(coder_id) + "\n")
 			# Otherwise, do extra processing.
 			else:
 				# Markup the parallel sentences with spacy (assume tokenized)
 				proc_orig = toolbox.applySpacy(orig_sent.strip().split(), nlp)
 				proc_cor = toolbox.applySpacy(cor_sent.strip().split(), nlp)
 				# Auto align the parallel sentences and extract the edits.
-				auto_edits = align_text.getAutoAlignedEdits(proc_orig, proc_cor, nlp, args)
+				auto_edits = align_text.getAutoAlignedEdits(proc_orig, proc_cor, nlp, lev, merge)
 				# Loop through the edits.
 				for auto_edit in auto_edits:
 					# Give each edit an automatic error type.
